@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+NODE_NUMBER=$1
+
+AKKA_PORT="265$NODE_NUMBER"
+JMX_PORT="919$NODE_NUMBER"
+
+sbt \
+  -Dakka.remote.netty.tcp.port=$AKKA_PORT \
+  -Dcom.sun.management.jmxremote.port=$JMX_PORT \
+  -Dcom.sun.management.jmxremote.authenticate=false \
+  -Dcom.sun.management.jmxremote.ssl=false \
+  console/run

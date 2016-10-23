@@ -1,12 +1,10 @@
 package victorops.example
 
-import akka.actor.Actor.Receive
 import akka.actor.{ Actor, ActorLogging }
 import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.{ CurrentClusterState, InitialStateAsEvents, MemberEvent, MemberExited, MemberJoined, MemberRemoved, MemberUp, ReachableMember, UnreachableMember }
+import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberEvent, MemberExited, MemberJoined, MemberRemoved, MemberUp, ReachableMember, UnreachableMember }
 
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration._
 
 class ClusterMonitorActor(implicit ec: ExecutionContext) extends Actor with ActorLogging {
 

@@ -1,15 +1,18 @@
 package victorops.example
 
-import akka.actor.{ ActorSystem, Props }
+import akka.actor.{ ActorRef, ActorSystem, Props }
+import akka.cluster.Cluster
 import akka.cluster.sharding.ClusterSharding
 import akka.cluster.sharding.ShardRegion.{ CurrentShardRegionState, GetClusterShardingStats }
 import akka.pattern._
 import akka.util.Timeout
 import com.typesafe.config.{ Config, ConfigFactory }
+import org.slf4j.LoggerFactory
 import victorops.example.CountingActor.{ GetCount, IncrementCount, ResetCount }
 
 import scala.concurrent.duration._
-import scala.concurrent.{ Await, Future }
+import scala.concurrent.{ Await, ExecutionContext, Future }
+import scala.util.{ Failure, Success }
 
 trait CountingTasks { self: ClusterTasks with FutureHelpers =>
 
@@ -33,15 +36,7 @@ trait CountingTasks { self: ClusterTasks with FutureHelpers =>
 trait ClusterTasks {
   def system: ActorSystem
   def config: Config
-
-  lazy val ClusterShards = config.getInt("victorops.example.cluster-shards")
-
-  lazy val counterRegion = ClusterSharding(system).startProxy(
-    typeName = "Counter",
-    role = None,
-    extractEntityId = CountingActor.extractEntityId,
-    extractShardId = CountingActor.extractShardId(ClusterShards)
-  )
+  def counterRegion: ActorRef
 }
 
 trait FutureHelpers {
@@ -52,24 +47,33 @@ trait FutureHelpers {
   }
 }
 
-object console extends CountingTasks with ClusterTasks with FutureHelpers {
+class ConsoleImports(val config: Config, val system: ActorSystem, val cluster: Cluster)
 
-  lazy implicit val timeout = Timeout(1 second)
+class Console(config: Config, system: ActorSystem, cluster: Cluster) {
 
-  lazy val config = ConfigFactory.load()
+  object imports extends ConsoleImports(config, system, cluster)
+    with CountingTasks with ClusterTasks with FutureHelpers {
 
-  lazy val ClusterName = config.getString("victorops.example.cluster-name")
+    val log = LoggerFactory.getLogger("ConsoleLog")
 
-  lazy val system: ActorSystem = ActorSystem(ClusterName)
+    lazy implicit val timeout = Timeout(1 second)
 
-  lazy val clusterListener = system.actorOf(SimpleClusterListener.props, "cluster-listener")
+    lazy implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.global
 
-  lazy val echo = system.actorOf(Props[EchoActor], "echo-actor")
+    lazy val ClusterShards = config.getInt("victorops.example.cluster-shards")
 
-  def initializeConsole(): Unit = {
-    system
-    //clusterListener
-    counterRegion
-    ()
+    lazy val counterRegion = ClusterSharding(system).startProxy(
+      typeName = "Counter",
+      role = None,
+      extractEntityId = CountingActor.extractEntityId,
+      extractShardId = CountingActor.extractShardId(ClusterShards)
+    )
+
+    lazy val echo = system.actorOf(Props[EchoActor], "echo-actor")
+
+    def initialize(): Unit = {
+
+    }
   }
 }
+

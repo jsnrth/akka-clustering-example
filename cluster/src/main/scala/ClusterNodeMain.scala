@@ -5,42 +5,38 @@ import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import victorops.example.{ ClusterMonitorActor, CountingActor, CountingEntityActor }
 
+import scala.concurrent.ExecutionContext
 import scala.util.{ Failure, Success }
 
-object NodeMain {
+object ClusterNodeMain {
 
   def main(args: Array[String]): Unit = {
-    val log = LoggerFactory.getLogger("NodeMain")
 
     implicit val ec = scala.concurrent.ExecutionContext.global
 
+    val log = LoggerFactory.getLogger("NodeMain")
+
     val config = ConfigFactory.load()
+
     val ClusterName = config.getString("victorops.example.cluster-name")
+
     val ClusterShards = config.getInt("victorops.example.cluster-shards")
 
     val system = ActorSystem(ClusterName)
+
     val cluster = Cluster(system)
 
     sys.addShutdownHook {
       log.info(s"Leaving cluster now on shutdown! [$cluster]")
-      cluster.leave(cluster.selfAddress)
-      Thread.sleep(5000) // sleep for 5 seconds to let the cluster leave
+      shutOffTheLights(waitForIt = true, cluster, system)
     }
 
     cluster.registerOnMemberRemoved {
-      log.warn(s"Member removed, shutting down")
-      cluster.leave(cluster.selfAddress)
-      system.terminate()
-
-      system.whenTerminated onComplete  {
-        case Success(_) => sys.exit()
-        case Failure(e) => sys.exit()
-      }
+      log.warn(s"Member removed, shutting down [$cluster]")
+      shutOffTheLights(waitForIt = false, cluster, system)
     }
 
     system.actorOf(Props(classOf[ClusterMonitorActor], ec), "cluster-monitor")
-
-    //val clusterListener = system.actorOf(SimpleClusterListener.props, "cluster-listener")
 
     val counterShardRegion = ClusterSharding(system).start(
       typeName = "Counter",
@@ -51,6 +47,16 @@ object NodeMain {
     )
 
     system.awaitTermination()
+  }
 
+  private def shutOffTheLights(waitForIt: Boolean, cluster: Cluster, system: ActorSystem)
+    (implicit ec: ExecutionContext): Unit = {
+
+    cluster.leave(cluster.selfAddress)
+    system.terminate() onComplete {
+      case Success(_) => sys.exit()
+      case Failure(e) => sys.exit()
+    }
+    if (waitForIt) Thread.sleep(5000) // let the cluster leave
   }
 }
