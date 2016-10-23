@@ -2,6 +2,7 @@ name := "akka-clustering-example"
 
 val ScalaVersion = "2.11.8"
 val AkkaVersion = "2.4.11"
+val AmmoniteVersion = "0.7.8"
 
 lazy val commonSettings = Seq(
   organization := "victorops",
@@ -12,14 +13,27 @@ lazy val commonSettings = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(wut)
+  .aggregate(cluster, console)
 
-lazy val wut = (project in file("wut"))
+lazy val cluster = (project in file("cluster"))
   .settings(commonSettings ++ Seq(
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-cluster" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-cluster-tools" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-cluster-sharding" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-persistence-cassandra" % "0.18",
       "com.typesafe.akka" %% "akka-testkit" % AkkaVersion % "test",
       "org.scalatest" %% "scalatest" % "2.2.4" % "test"
     )
   ):_*)
 
+lazy val console = (project in file("console"))
+  .dependsOn(cluster)
+  .settings(commonSettings ++ Seq(
+    libraryDependencies ++= Seq(
+      // needed when ammonite is in an sbt module...
+      "org.scala-lang" % "scala-library" % ScalaVersion,
+      "com.lihaoyi" % "ammonite" % AmmoniteVersion cross CrossVersion.full
+    )
+  ):_*)
