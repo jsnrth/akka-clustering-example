@@ -13,9 +13,13 @@ lazy val commonSettings = Seq(
 )
 
 lazy val root = (project in file("."))
-  .aggregate(cluster, console)
+  .aggregate(common, cluster, console)
+
+lazy val common = (project in file("common"))
+  .settings(commonSettings)
 
 lazy val cluster = (project in file("cluster"))
+  .dependsOn(common)
   .settings(commonSettings ++ Seq(
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor" % AkkaVersion,
@@ -29,7 +33,7 @@ lazy val cluster = (project in file("cluster"))
   ):_*)
 
 lazy val console = (project in file("console"))
-  .dependsOn(cluster)
+  .dependsOn(common, cluster)
   .settings(commonSettings ++ Seq(
     libraryDependencies ++= Seq(
       // needed when ammonite is in an sbt module...

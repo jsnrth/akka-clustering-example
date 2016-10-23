@@ -1,44 +1,56 @@
-import akka.actor.{ ActorRef, ActorSystem, Props }
-import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings, ShardRegion }
+import akka.actor.{ ActorSystem, Props }
+import akka.cluster.Cluster
+import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
 import com.typesafe.config.ConfigFactory
-import victorops.example.{ CountingActor, SimpleClusterListener }
+import org.slf4j.LoggerFactory
+import victorops.example.{ ClusterMonitorActor, CountingActor, CountingEntityActor }
 
-import scala.util.hashing.{ Hashing, MurmurHash3 }
+import scala.util.{ Failure, Success }
 
-object NodeMain extends App {
+object NodeMain {
 
-  val config = ConfigFactory.load()
-  val ClusterName = config.getString("victorops.example.cluster-name")
-  val system = ActorSystem(ClusterName)
+  def main(args: Array[String]): Unit = {
+    val log = LoggerFactory.getLogger("NodeMain")
 
-  val clusterListener = system.actorOf(SimpleClusterListener.props, "cluster-listener")
+    implicit val ec = scala.concurrent.ExecutionContext.global
 
-  (1 to 200) map { i => s"counter-thing-$i" } foreach { name =>
-    ClusterSharding(system).start(
+    val config = ConfigFactory.load()
+    val ClusterName = config.getString("victorops.example.cluster-name")
+    val ClusterShards = config.getInt("victorops.example.cluster-shards")
+
+    val system = ActorSystem(ClusterName)
+    val cluster = Cluster(system)
+
+    sys.addShutdownHook {
+      log.info(s"Leaving cluster now on shutdown! [$cluster]")
+      cluster.leave(cluster.selfAddress)
+      Thread.sleep(5000) // sleep for 5 seconds to let the cluster leave
+    }
+
+    cluster.registerOnMemberRemoved {
+      log.warn(s"Member removed, shutting down")
+      cluster.leave(cluster.selfAddress)
+      system.terminate()
+
+      system.whenTerminated onComplete  {
+        case Success(_) => sys.exit()
+        case Failure(e) => sys.exit()
+      }
+    }
+
+    system.actorOf(Props(classOf[ClusterMonitorActor], ec), "cluster-monitor")
+
+    //val clusterListener = system.actorOf(SimpleClusterListener.props, "cluster-listener")
+
+    val counterShardRegion = ClusterSharding(system).start(
       typeName = "Counter",
-      entityProps = CountingActor.props(name),
+      entityProps = Props[CountingEntityActor],
       settings = ClusterShardingSettings(system),
-      extractEntityId = extractEntityId,
-      extractShardId = extractShardId
+      extractEntityId = CountingActor.extractEntityId,
+      extractShardId = CountingActor.extractShardId(ClusterShards)
     )
+
+    system.awaitTermination()
+
   }
-
-  val extractEntityId: ShardRegion.ExtractEntityId = {
-    case msg @ CountingActor.GetCount(id) => (id, msg)
-  }
-
-  val numberOfShards = 100
-
-  val extractShardId: ShardRegion.ExtractShardId = {
-    case CountingActor.GetCount(id) => shardId(id, numberOfShards)
-  }
-
-  val hashing = Hashing.fromFunction(MurmurHash3.stringHash)
-
-  def shardId(shardKey: String, memberSize: Int): String = {
-    (hashing.hash(shardKey) % memberSize).toString
-  }
-
-  system.awaitTermination()
-
 }
