@@ -7,10 +7,23 @@ import akka.actor.SupervisorStrategy.Stop
 import akka.actor.{ Actor, ActorLogging, ActorRef, Props, ReceiveTimeout, Status }
 import akka.cluster.sharding.ShardRegion
 import akka.cluster.sharding.ShardRegion.Passivate
+import akka.persistence.PersistentActor
 import victorops.example.CountingActor._
 
 import scala.util.hashing.{ Hashing, MurmurHash3 }
 
+/**
+ * This is the wrapper for akka cluster sharding. It will lazily create an
+ * underlying CountingActor that is persistent, and proxy all messages to it.
+ *
+ * This is to get around the ClusterSharding(system).start interface. That
+ * requires Props up front, it seems, and I need the counterId up front for a
+ * persistenceId (i.e. I need to pass in the counterId with the props).
+ *
+ * How do you even shard persistent actors? The examples in the akka docs
+ * show using the actor path as a persistenceId, which doesn't seem right --
+ * I want my persistence IDs to be application-specific, not framework specific.
+ */
 class CountingEntityActor extends Actor with ActorLogging {
 
   override def receive: Receive = {
@@ -61,22 +74,42 @@ object CountingActor {
   }
 }
 
-class CountingActor(counterId: String) extends Actor with ActorLogging {
+class CountingActor(counterId: String) extends PersistentActor with ActorLogging {
 
   private val count = new AtomicInteger(0)
 
-  override def receive: Receive = {
-    case GetCount(counterId) =>
-      sender() ! count.get()
-      log.info(s"Got GetCount [counterId=$counterId] [count=$count]")
+  def persistenceId: String = s"counter-$counterId"
 
-    case IncrementCount(counterId) =>
-      sender() ! count.incrementAndGet()
-      log.info(s"Got IncrementCount [counterId=$counterId] [count=$count]")
+  def receiveRecover: Receive = {
+    case _: GetCount =>
+      log.info(s"Recover GetCount [counterId=$counterId] [count=$count]")
+      count.get()
+    case _: IncrementCount =>
+      log.info(s"Recover IncrementCount [counterId=$counterId] [count=$count]")
+      count.incrementAndGet()
+    case _: ResetCount =>
+      log.info(s"Recover ResetCount [counterId=$counterId] [count=$count]")
+      count.getAndSet(0)
+  }
 
-    case ResetCount(counterId) =>
-      sender() ! count.getAndSet(0)
-      log.info(s"Got ResetCount [counterId=$counterId] [count=$count]")
+  def receiveCommand: Receive = {
+    case m @ GetCount(counterId) =>
+      persist(m) { pm =>
+        sender() ! count.get()
+        log.info(s"Got GetCount [counterId=$counterId] [count=$count]")
+      }
+
+    case m @ IncrementCount(counterId) =>
+      persist(m) { pm =>
+        sender() ! count.incrementAndGet()
+        log.info(s"Got IncrementCount [counterId=$counterId] [count=$count]")
+      }
+
+    case m @ ResetCount(counterId) =>
+      persist(m) { pm =>
+        sender() ! count.getAndSet(0)
+        log.info(s"Got ResetCount [counterId=$counterId] [count=$count]")
+      }
 
     case ReceiveTimeout =>
       context.parent ! Passivate(stopMessage = Stop)

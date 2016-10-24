@@ -53,10 +53,11 @@ object ClusterNodeMain {
     (implicit ec: ExecutionContext): Unit = {
 
     cluster.leave(cluster.selfAddress)
+    if (waitForIt) Thread.sleep(5000) // let the cluster leave
+
     system.terminate() onComplete {
       case Success(_) => sys.exit()
       case Failure(e) => sys.exit()
     }
-    if (waitForIt) Thread.sleep(5000) // let the cluster leave
   }
 }

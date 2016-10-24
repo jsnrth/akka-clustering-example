@@ -9,13 +9,14 @@ import scala.util.{ Failure, Success }
 object ConsoleMain {
   def main(args: Array[String]): Unit = {
 
+    implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.global
+
     val config = ConfigFactory.load()
     val ClusterName = config.getString("victorops.example.cluster-name")
     val system = ActorSystem(ClusterName)
     val cluster = Cluster(system)
-    implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.global
 
-    val amm = ammonite.Main(
+    ammonite.Main(
       predef =
         """
           |println("Loading the VictorOps Example Console!")
