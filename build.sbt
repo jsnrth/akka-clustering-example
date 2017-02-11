@@ -41,3 +41,12 @@ lazy val console = (project in file("console"))
       "com.lihaoyi" % "ammonite" % AmmoniteVersion cross CrossVersion.full
     )
   ):_*)
+
+lazy val example = (project in file("example"))
+  .settings(commonSettings ++ Seq(
+    libraryDependencies ++= Seq(
+      "com.typesafe.akka" %% "akka-actor" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-cluster" % AkkaVersion,
+      "com.typesafe.akka" %% "akka-cluster-sharding" % AkkaVersion
+    )
+  ):_*)
